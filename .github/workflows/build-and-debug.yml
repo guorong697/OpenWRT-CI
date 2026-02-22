@@ -1,0 +1,43 @@
+jobs:
+  build-and-debug:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive # 如果源码包含子模块，请启用
+
+      - name: Setup build environment
+        run: |
+          # 这里安装编译所需的依赖，例如：
+          sudo apt-get update
+          sudo apt-get install -y build-essential libncurses5-dev libssl-dev ...
+
+      - name: Step 1 - Update and install feeds
+        run: |
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+
+      - name: Step 2 - Clean and recompile U-Boot (详细输出)
+        run: |
+          make package/boot/uboot-mediatek/clean
+          make package/boot/uboot-mediatek/compile -j1 V=s 2>&1 | tee u-boot-compile.log
+        continue-on-error: true # 即使编译失败，也继续执行后续步骤
+
+      - name: Step 3 - Check if the defconfig file exists
+        run: |
+          echo "Checking for mt7981_honor_fur-602_defconfig..."
+          if find . -name "mt7981_honor_fur-602_defconfig" -type f | grep -q .; then
+            echo "✅ Defconfig file found."
+            find . -name "mt7981_honor_fur-602_defconfig" -type f | head -5
+          else
+            echo "❌ Defconfig file NOT found. This is likely the cause of the error."
+          fi
+
+      # 可选：上传编译日志作为产物，便于下载分析
+      - name: Upload compilation log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: u-boot-compilation-log
+          path: u-boot-compile.log
