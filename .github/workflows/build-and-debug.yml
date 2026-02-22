@@ -1,43 +1,181 @@
+name: OpenWrt Build and Debug
+
+on:
+  # 手动触发，方便在需要时运行
+  workflow_dispatch:
+    inputs:
+      config_profile:
+        description: 'Target Profile (e.g., MEDIATEK)'
+        required: true
+        default: 'MEDIATEK'
+        type: string
+
+env:
+  # 配置参数（根据您的需求修改）
+  OPENWRT_SOURCE: 'guorong697/immortalwrt'
+  OPENWRT_BRANCH: 'owrt'
+  BUILD_DIR: 'openwrt-build'
+
 jobs:
   build-and-debug:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04  # 推荐使用 Ubuntu 22.04，兼容性较好
     steps:
-      - name: Checkout repository
+      - name: Checkout workflow repository (optional)
         uses: actions/checkout@v4
         with:
-          submodules: recursive # 如果源码包含子模块，请启用
+          path: workflow-repo  # 将当前 workflow 仓库检出到子目录
+
+      - name: Checkout OpenWrt source code
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.OPENWRT_SOURCE }}
+          ref: ${{ env.OPENWRT_BRANCH }}
+          path: ${{ env.BUILD_DIR }}
+          submodules: recursive  # 如果源码包含子模块，请启用
 
       - name: Setup build environment
         run: |
-          # 这里安装编译所需的依赖，例如：
           sudo apt-get update
-          sudo apt-get install -y build-essential libncurses5-dev libssl-dev ...
+          sudo apt-get install -y \
+            build-essential \
+            clang \
+            gcc \
+            g++ \
+            libncurses5-dev \
+            libncursesw5-dev \
+            libssl-dev \
+            zlib1g-dev \
+            gawk \
+            gettext \
+            libxml-parser-perl \
+            unzip \
+            wget \
+            git \
+            subversion \
+            python3 \
+            python3-distutils \
+            rsync \
+            curl \
+            ccache
+        working-directory: ${{ env.BUILD_DIR }}
 
       - name: Step 1 - Update and install feeds
         run: |
           ./scripts/feeds update -a
           ./scripts/feeds install -a
+        working-directory: ${{ env.BUILD_DIR }}
 
-      - name: Step 2 - Clean and recompile U-Boot (详细输出)
+      - name: Step 2 - Apply configuration (示例)
         run: |
+          # 这里可以根据您的需求生成或应用 .config 文件
+          # 例如：使用默认配置
+          make defconfig
+          
+          # 或者如果您有预置的配置文件，可以复制过来
+          # cp ../workflow-repo/configs/mediatek.config .config
+          
+          # 如果需要交互式配置，可以使用以下命令（但CI环境不支持交互）
+          # echo "CONFIG_TARGET_mediatek=y" >> .config
+          # echo "CONFIG_TARGET_mediatek_filogic=y" >> .config
+          
+          make defconfig  # 再次运行以解析依赖
+        working-directory: ${{ env.BUILD_DIR }}
+
+      - name: Step 3 - Download dependencies
+        run: |
+          make download -j$(nproc)
+          find dl -size -1024c -exec rm -f {} \;  # 删除不完整的下载
+        working-directory: ${{ env.BUILD_DIR }}
+
+      - name: Step 4 - Clean and recompile U-Boot (详细输出)
+        run: |
+          echo "开始清理和重新编译 U-Boot..."
           make package/boot/uboot-mediatek/clean
           make package/boot/uboot-mediatek/compile -j1 V=s 2>&1 | tee u-boot-compile.log
-        continue-on-error: true # 即使编译失败，也继续执行后续步骤
-
-      - name: Step 3 - Check if the defconfig file exists
-        run: |
-          echo "Checking for mt7981_honor_fur-602_defconfig..."
-          if find . -name "mt7981_honor_fur-602_defconfig" -type f | grep -q .; then
-            echo "✅ Defconfig file found."
-            find . -name "mt7981_honor_fur-602_defconfig" -type f | head -5
+          
+          # 检查编译结果
+          if [ $? -eq 0 ]; then
+            echo "✅ U-Boot 编译成功"
           else
-            echo "❌ Defconfig file NOT found. This is likely the cause of the error."
+            echo "❌ U-Boot 编译失败，继续执行调试步骤"
           fi
+        working-directory: ${{ env.BUILD_DIR }}
+        continue-on-error: true  # 即使失败也继续执行后续步骤
 
-      # 可选：上传编译日志作为产物，便于下载分析
-      - name: Upload compilation log
+      - name: Step 5 - Check if the defconfig file exists
+        run: |
+          echo "检查 mt7981_honor_fur-602_defconfig 文件是否存在..."
+          
+          # 在常见位置查找配置文件
+          SEARCH_PATHS=(
+            "configs/"
+            "arch/arm/mach-mediatek/"
+            "board/mediatek/"
+            "."
+          )
+          
+          FOUND=0
+          for path in "${SEARCH_PATHS[@]}"; do
+            if [ -d "$path" ]; then
+              if find "$path" -name "*mt7981_honor_fur-602*" -type f | grep -q .; then
+                echo "✅ 在 $path 中找到相关配置文件："
+                find "$path" -name "*mt7981_honor_fur-602*" -type f
+                FOUND=1
+              fi
+            fi
+          done
+          
+          if [ $FOUND -eq 0 ]; then
+            echo "❌ 未找到 mt7981_honor_fur-602_defconfig 文件"
+            echo "可能的原因："
+            echo "1. 设备配置尚未合并到当前分支"
+            echo "2. 需要更新 feeds 或切换分支"
+            echo "3. 设备名称可能有误"
+            
+            # 列出所有可用的 mt7981 配置
+            echo "可用的 mt7981 配置："
+            find . -name "*mt7981*" -type f | head -20 || true
+          fi
+        working-directory: ${{ env.BUILD_DIR }}
+
+      - name: Step 6 - 尝试完整编译（可选）
+        if: always()  # 无论之前步骤是否失败都执行
+        run: |
+          echo "尝试完整编译过程..."
+          make -j$(nproc) V=s 2>&1 | tee full-build.log || true
+          echo "编译过程完成"
+        working-directory: ${{ env.BUILD_DIR }}
+        continue-on-error: true
+
+      - name: Upload compilation logs
+        if: always()  # 无论构建成功与否都上传日志
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs-${{ github.run_id }}
+          path: |
+            ${{ env.BUILD_DIR }}/u-boot-compile.log
+            ${{ env.BUILD_DIR }}/full-build.log
+          retention-days: 7
+
+      - name: Upload configuration files
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: u-boot-compilation-log
-          path: u-boot-compile.log
+          name: config-files-${{ github.run_id }}
+          path: |
+            ${{ env.BUILD_DIR }}/.config
+            ${{ env.BUILD_DIR }}/feeds.conf
+            ${{ env.BUILD_DIR }}/feeds.conf.default
+          retention-days: 7
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "=== 构建调试总结 ==="
+          echo "源码仓库: ${{ env.OPENWRT_SOURCE }}"
+          echo "分支: ${{ env.OPENWRT_BRANCH }}"
+          echo "配置: ${{ github.event.inputs.config_profile }}"
+          echo "工作目录: ${{ env.BUILD_DIR }}"
+          echo "运行ID: ${{ github.run_id }}"
+          echo "日志已上传为 Artifacts"
+          echo "===================="
