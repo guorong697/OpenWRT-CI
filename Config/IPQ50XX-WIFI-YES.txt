@@ -5,5 +5,5 @@ CONFIG_TARGET_qualcommax_ipq50xx=y
 CONFIG_TARGET_DEVICE_qualcommax_ipq50xx_DEVICE_glinet_gl-b3000=y
 CONFIG_TARGET_DEVICE_qualcommax_ipq50xx_DEVICE_cmcc_pz-l8=y
 CONFIG_TARGET_DEVICE_qualcommax_ipq50xx_DEVICE_cmcc_mr3000d-ci=y
-
+CONFIG_TARGET_DEVICE_qualcommax_ipq50xx_DEVICE_cmcc_rax3000q=y
 
