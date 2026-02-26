@@ -34,7 +34,7 @@ jobs:
       matrix:
         CONFIG: [MEDIATEK]
         SOURCE: [guorong697/immortalwrt]
-        BRANCH: [owrt]
+        BRANCH: [360t7_fur602]
 
     #调用公用编译核心WRT-CORE.yml
     uses: ./.github/workflows/WRT-CORE.yml
