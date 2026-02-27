@@ -9,7 +9,7 @@ env:
   SOURCE_BRANCH: "360t7"
   # 请根据实际路径修改 DTS_FILE_PATH（关键！）
   # 先确认你的 mt7981_honor-fur-602.dts 在仓库中的实际位置
-  DTS_FILE_PATH: "target/linux/mediatek/dts/mt7981_honor-fur-602.dts"
+  DTS_FILE_PATH: "target/linux/mediatek/dts/mt7981b-honor-fur-602.dts"
   # ----------------------------
 
 jobs:
