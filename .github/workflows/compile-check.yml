@@ -8,7 +8,6 @@ env:
   SOURCE_REPO: "guorong697/immortalwrt" # 例如："myusername/immortalwrt-fur602"
   SOURCE_BRANCH: "360t7" # 或者是 "master"，你修改好代码的那个分支
   # -------------------------------------------------------------------
-
 jobs:
   verify-build:
     name: Verify U-Boot Build
@@ -16,7 +15,6 @@ jobs:
     timeout-minutes: 120
 
     steps:
-      # 1. 拉取【另一个仓库】的源码（你已经在里面改好 DTS 了）
       - name: Checkout ImmortalWRT Source from Repo
         uses: actions/checkout@v4
         with:
@@ -24,24 +22,18 @@ jobs:
           ref: ${{ env.SOURCE_BRANCH }}
           fetch-depth: 1
 
-      # 2. 安装编译依赖（修复 python3-distutils 问题）
+      # 1. 修复依赖安装（移除 python3-distutils）
       - name: Install Build Dependencies
         run: |
           sudo apt-get update
-          # 先安装软件源工具，适配不同 Ubuntu 版本
-          sudo apt-get install -y software-properties-common
-          # 对于 Ubuntu 24.04+，python3-distutils 移到了 python3-setuptools 里
-          # 先尝试安装，如果失败则跳过
           sudo apt-get install -y \
             build-essential ccache ecj fastjar file g++ gawk \
-            gettext git java-propose-classpath libelf-dev \
+            gettext git libelf-dev \
             libncurses5-dev libncursesw5-dev libssl-dev \
             python3 python3-setuptools \
-            rsync subversion swig time unzip wget xsltproc zlib1g-dev || true
-          # 兼容旧版本 Ubuntu，尝试安装 distutils（失败则忽略）
-          sudo apt-get install -y python3-distutils || true
+            rsync subversion swig time unzip wget xsltproc zlib1g-dev
 
-      # 3. 配置 ccache
+      # 2. 配置 ccache
       - name: Setup ccache
         uses: actions/cache@v4
         with:
@@ -50,34 +42,44 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-ccache-uboot-
 
-      # 4. 更新 Feeds
-      - name: Update and Install Feeds
+      # 3. 【核心修改】直接生成最小化配置，不运行 defconfig/olddefconfig
+      - name: Generate Minimal Config
         run: |
-          ./scripts/feeds update -a
-          ./scripts/feeds install -a
-
-      # 5. 配置编译选项
-      - name: Configure Firmware
-        run: |
-          make defconfig
-          cat >> .config << 'EOF'
+          # 直接创建 .config 文件，只包含必要的配置
+          cat > .config << 'EOF'
           CONFIG_TARGET_mediatek=y
           CONFIG_TARGET_mediatek_filogic=y
           CONFIG_TARGET_mediatek_filogic_DEVICE_honor_fur-602=y
           CONFIG_PACKAGE_uboot-mediatek=y
+          # 关闭所有不必要的包，只编译工具链和 U-Boot
+          # CONFIG_ALL=y 是关闭的，这样可以极大减少配置时间
           EOF
-          make olddefconfig
+          
+          # 运行一次 oldconfig 但自动接受所有默认值（非关键项）
+          # 这里加上 -j1 V=s 以便如果出错能看到详情
+          make oldconfig V=s -j1 << EOF
+          EOF
+          
+          echo "✅ 最小化配置生成完成"
 
-      # 6. 编译验证
+      # 4. 【可选】跳过 Feeds 更新（如果不需要编译其他包）
+      # 注意：如果 U-Boot 编译依赖 feeds 里的东西，请取消下面这行的注释
+      # - name: Update Feeds (Minimal)
+      #   run: ./scripts/feeds update base
+
+      # 5. 编译 U-Boot 验证 DTS
       - name: Compile U-Boot (Verify DTS)
         id: compile
         run: |
           export CCACHE_DIR=~/.ccache
           export CCACHE_MAXSIZE=1G
           echo "开始编译 U-Boot..."
+          # 先执行 prereq 检查环境
+          make prereq
+          # 编译 U-Boot
           make package/boot/uboot-mediatek/{clean,compile} V=s -j1
 
-      # 7. 上传日志
+      # 6. 上传日志
       - name: Upload Debug Logs
         if: failure()
         uses: actions/upload-artifact@v4
