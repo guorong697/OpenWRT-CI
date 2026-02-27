@@ -23,19 +23,23 @@ jobs:
           repository: ${{ env.SOURCE_REPO }}
           ref: ${{ env.SOURCE_BRANCH }}
           fetch-depth: 1
-          # 如果是私有仓库，需要配置 token，这里默认是公开仓库
-          # token: ${{ secrets.GITHUB_TOKEN }} 
 
-      # 2. 安装编译依赖
+      # 2. 安装编译依赖（修复 python3-distutils 问题）
       - name: Install Build Dependencies
         run: |
           sudo apt-get update
+          # 先安装软件源工具，适配不同 Ubuntu 版本
+          sudo apt-get install -y software-properties-common
+          # 对于 Ubuntu 24.04+，python3-distutils 移到了 python3-setuptools 里
+          # 先尝试安装，如果失败则跳过
           sudo apt-get install -y \
             build-essential ccache ecj fastjar file g++ gawk \
             gettext git java-propose-classpath libelf-dev \
             libncurses5-dev libncursesw5-dev libssl-dev \
-            python3 python3-distutils python3-setuptools \
-            rsync subversion swig time unzip wget xsltproc zlib1g-dev
+            python3 python3-setuptools \
+            rsync subversion swig time unzip wget xsltproc zlib1g-dev || true
+          # 兼容旧版本 Ubuntu，尝试安装 distutils（失败则忽略）
+          sudo apt-get install -y python3-distutils || true
 
       # 3. 配置 ccache
       - name: Setup ccache
