@@ -210,25 +210,47 @@ jobs:
 
       - name: Package Firmware
         run: |
-          cd ./wrt/ && mkdir ./upload/
-
+          cd ./wrt/ && mkdir -p ./upload/
+        
+          # 保存配置文件
           cp -f ./.config ./upload/Config-"$WRT_CONFIG"-"$WRT_INFO"-"$WRT_BRANCH"-"$WRT_DATE".txt
-
+        
           if [[ $WRT_TEST != 'true' ]]; then
-            echo "WRT_KVER=$(find ./bin/targets/ -type f -name "*.manifest" -exec grep -oP '^kernel - \K[\d\.]+' {} \;)" >> $GITHUB_ENV
-            echo "WRT_LIST=$(find ./bin/targets/ -type f -name "*.manifest" -exec grep -oP '^luci-(app|theme)[^ ]*' {} \; | tr '\n' ' ')" >> $GITHUB_ENV
-
+            # 提取内核版本和插件列表
+            echo "WRT_KVER=$(find ./bin/targets/ -type f -name "*.manifest" -exec grep -m1 -oP '^kernel - \K[\d\.]+' {} \; | head -1)" >> $GITHUB_ENV
+            echo "WRT_LIST=$(find ./bin/targets/ -type f -name "*.manifest" -exec grep -oP '^luci-(app|theme)[^ ]*' {} \; | tr '\n' ' ' | tr -s ' ')" >> $GITHUB_ENV
+        
+            # 删除不必要的辅助文件
             find ./bin/targets/ -iregex ".*\(buildinfo\|json\|sha256sums\|packages\)$" -exec rm -rf {} +
-
-            for FILE in $(find ./bin/targets/ -type f -iname "*$WRT_TARGET*") ; do
-              EXT=$(basename $FILE | cut -d '.' -f 2-)
-              NAME=$(basename $FILE | cut -d '.' -f 1 | grep -io "\($WRT_TARGET\).*")
-              NEW_FILE="$WRT_INFO"-"$WRT_BRANCH"-"$NAME"-"$WRT_DATE"."$EXT"
-              mv -f $FILE ./upload/$NEW_FILE
-            done
-
-            find ./bin/targets/ -type f -exec mv -f {} ./upload/ \;
-
+        
+            # 查找并列出所有固件相关文件（调试用）
+            echo "=== 查找所有固件文件 ==="
+            find ./bin/targets/ -type f \( -name "*.itb" -o -name "*.bin" -o -name "*.fip" -o -name "*.img" \) 2>/dev/null | sort
+            echo "======================="
+        
+            # 方法1: 移动所有固件相关文件（不重命名）
+            echo "正在移动所有固件文件到upload目录..."
+            find ./bin/targets/ -type f \( -name "*.itb" -o -name "*.bin" -o -name "*.fip" -o -name "*.img" \) -exec mv -f {} ./upload/ \;
+            
+            # 方法2: 按设备名移动并重命名（可选，如果方法1不适用）
+            # echo "正在按设备名移动并重命名文件..."
+            # for FILE in $(find ./bin/targets/ -type f \( -name "*qihoo*" -o -name "*360t7*" -o -name "*$WRT_TARGET*" \) 2>/dev/null | sort); do
+            #   if [[ -f "$FILE" ]]; then
+            #     FILENAME=$(basename "$FILE")
+            #     EXTENSION="${FILENAME##*.}"
+            #     BASENAME="${FILENAME%.*}"
+            #     NEW_FILENAME="${WRT_INFO}-${WRT_BRANCH}-${BASENAME}-${WRT_DATE}.${EXTENSION}"
+            #     echo "移动: $FILE  ->  $NEW_FILENAME"
+            #     mv -f "$FILE" "./upload/$NEW_FILENAME"
+            #   fi
+            # done
+        
+            # 检查upload目录中的文件
+            echo "=== upload目录中的文件 ==="
+            ls -la ./upload/ || true
+            echo "======================="
+        
+            # 清理编译目录
             make clean -j$(nproc)
           fi
 
