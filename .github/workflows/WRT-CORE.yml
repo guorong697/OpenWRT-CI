@@ -198,6 +198,16 @@ jobs:
           du -h --max-depth=1
           echo "======================="
 
+      - name: Debug - List generated files
+        run: |
+          cd ./wrt/
+          echo "=== WRT_TARGET value ==="
+          echo "$WRT_TARGET"
+          echo "=== Generated files in bin/targets/ ==="
+          find ./bin/targets/ -type f -name "*.itb" | sort
+          echo "=== Files matching WRT_TARGET ==="
+          find ./bin/targets/ -type f -iname "*$WRT_TARGET*" | sort
+
       - name: Package Firmware
         run: |
           cd ./wrt/ && mkdir ./upload/
