@@ -208,6 +208,13 @@ jobs:
           echo "=== Files matching WRT_TARGET ==="
           find ./bin/targets/ -type f -iname "*$WRT_TARGET*" | sort
 
+      - name: 上传编译结果到 Artifact (Upload build result to Artifact)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ImmortalWrt-build-result
+          path: wrt/bin/targets
+
+
       - name: Package Firmware
         run: |
           cd ./wrt/ && mkdir -p ./upload/
