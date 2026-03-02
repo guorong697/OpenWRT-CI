@@ -179,14 +179,16 @@ jobs:
 
           make download -j$(nproc)
 
-      - name: 编译前上传配置 (Upload config before build)
+      - name: 编译前上传配置1 (Upload feeds before build)
+        uses: actions/upload-artifact@v4
+        with:
+          name: feeds-before-build
+          path: wrt/feeds.conf.default
+      - name: 编译前上传配置2 (Upload config before build)
         uses: actions/upload-artifact@v4
         with:
           name: config-before-build
-          path: |
-            wrt/feeds.conf.default
-            wrt/.config
-
+          path: wrt/.config
 
       - name: Compile Firmware
         if: env.WRT_TEST != 'true'
